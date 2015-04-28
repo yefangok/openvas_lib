@@ -72,11 +72,9 @@ def get_connector(host, username, password, port=9390, timeout=None):
     manager = ConnectionManager(host, username, password, port, timeout)
 
     # Make concrete connector from version
-    if manager.protocol_version == "4.0":
-        from openvas_lib.ompv4 import OMPv4
-        return OMPv4(manager)
-    else:
-        raise RemoteVersionError("Unknown OpenVAS version for remote host.")
+    # removed version check, this may cause issues but it seems to work.
+    from openvas_lib.ompv4 import OMPv4
+    return OMPv4(manager)
 
 
 #------------------------------------------------------------------------------

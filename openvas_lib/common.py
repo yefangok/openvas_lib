@@ -32,6 +32,9 @@ from random import choice
 from threading import RLock
 from threading import Event, Timer
 from string import ascii_letters, digits
+from six import string_types
+
+from collections import Iterable
 
 try:
     from xml.etree import cElementTree as etree
@@ -73,8 +76,15 @@ def get_connector(host, username, password, port=9390, timeout=None):
 
     # Make concrete connector from version
     # removed version check, this may cause issues but it seems to work.
-    from openvas_lib.ompv4 import OMPv4
-    return OMPv4(manager)
+
+    if manager.protocol_version == "4.0":
+        from openvas_lib.ompv4 import OMPv4
+        return OMPv4(manager)
+    elif manager.protocol_version == "5.0":
+        from openvas_lib.ompv5 import OMPv5
+        return OMPv5(manager)
+    else:
+        raise RemoteVersionError("Unknown OpenVAS version for remote host.")
 
 
 #------------------------------------------------------------------------------
@@ -109,10 +119,9 @@ class ConnectionManager(object):
         :param timeout: timeout for connection, in seconds.
         :type timeout: int
         """
-
-        if not isinstance(host, basestring):
+        if not isinstance(host, string_types):
             raise TypeError("Expected string, got %r instead" % type(host))
-        if not isinstance(username, basestring):
+        if not isinstance(username, string_types):
             raise TypeError("Expected string, got %r instead" % type(username))
         if isinstance(port, int):
             if not (0 < port < 65535):
@@ -196,9 +205,9 @@ class ConnectionManager(object):
 
         :raises: AuthFailedError, TypeError
         """
-        if not isinstance(username, basestring):
+        if not isinstance(username, string_types):
             raise TypeError("Expected string, got %r instead" % type(username))
-        if not isinstance(password, basestring):
+        if not isinstance(password, string_types):
             raise TypeError("Expected string, got %r instead" % type(password))
 
 
@@ -342,7 +351,7 @@ class ConnectionManager(object):
 
         :raises: ClientError, ServerError, TypeError, ValueError
         """
-        if not isinstance(xmldata, basestring):
+        if not isinstance(xmldata, string_types):
             raise TypeError("Expected basestring, got '%s' instead" % type(xmldata))
         if not isinstance(xml_result, bool):
             raise TypeError("Expected bool, got '%s' instead" % type(xml_result))

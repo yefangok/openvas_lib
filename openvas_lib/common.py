@@ -28,6 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 import re
 import ssl
 import socket
+import itertools
+
 from random import choice
 from threading import RLock
 from threading import Event, Timer
@@ -86,6 +88,40 @@ def get_connector(host, username, password, port=9390, timeout=None):
     else:
         raise RemoteVersionError("Unknown OpenVAS version for remote host.")
 
+
+def ranges(i):
+    for a, b in itertools.groupby(enumerate(i), lambda (x, y): y - x):
+        b = list(b)
+        yield b[0][1], b[-1][1]
+
+
+def port_ranges(ports, sep='-'):
+    """
+    Takes a list of ports and converts them into ranges for OpenVAS.
+
+        port_ranges(['0', '12-22', ])
+
+    """
+    out = []
+    for (i, p) in enumerate(ports):
+        if isinstance(p, basestring) and sep in p:
+            start, end = p.split(sep, 2)
+            out.append(range(int(start), int(end)))
+        else:
+            out.append(int(p))
+
+    # de-duplicate
+    out = list(set(out))
+    pranges = ranges(out)
+
+    pr = []
+    for (s, e) in pranges:
+        if s == e:
+            pr.append('%d' % s)
+        else:
+            pr.append('%d-%d' % (s,e))
+
+    return pr
 
 #------------------------------------------------------------------------------
 class ConnectionManager(object):
@@ -539,7 +575,17 @@ class OMP(object):
         raise NotImplementedError()
 
     #----------------------------------------------------------------------
-    def create_target(self, name, hosts, comment=""):
+    def create_port_list(self, name, tcp_ports=None, udp_ports=None):
+        return NotImplementedError()
+
+
+    #----------------------------------------------------------------------
+    def make_port_list(self, ports, protocol='tcp'):
+        return NotImplementedError()
+
+
+    #----------------------------------------------------------------------
+    def create_target(self, name, hosts, comment="", port_list=None):
         """
         Creates a target in OpenVAS.
 

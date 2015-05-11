@@ -36,11 +36,11 @@ from .common import *
 __all__ = ["OMPv5"]
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 #
 # OMPv5 implementation
 #
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 class OMPv5(OMP):
     """
     Internal manager for OpenVAS low level operations.
@@ -54,7 +54,7 @@ class OMPv5(OMP):
         This code is only compatible with OMP 4.0.
     """
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def __init__(self, omp_manager):
         """
         Constructor.
@@ -65,11 +65,11 @@ class OMPv5(OMP):
         # Call to super
         super(OMPv5, self).__init__(omp_manager)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     #
     # PUBLIC METHODS
     #
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def delete_task(self, task_id):
         """
         Delete a task in OpenVAS server.
@@ -86,7 +86,7 @@ class OMPv5(OMP):
         except ClientError:
             raise AuditNotFoundError()
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def stop_task(self, task_id):
         """
         Stops a task in OpenVAS server.
@@ -103,7 +103,7 @@ class OMPv5(OMP):
         except ClientError:
             raise AuditNotFoundError()
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def create_task(self, name, target, config=None, comment=""):
         """
         Creates a task in OpenVAS.
@@ -138,8 +138,8 @@ class OMPv5(OMP):
 
         return self._manager.make_xml_request(request, xml_result=True).get("id")
 
-    #----------------------------------------------------------------------
-    def create_target(self, name, hosts, comment=""):
+    # ----------------------------------------------------------------------
+    def create_target(self, name, hosts, comment="", port_list=None):
         """
         Creates a target in OpenVAS.
 
@@ -157,20 +157,23 @@ class OMPv5(OMP):
 
         :raises: ClientError, ServerError
         """
-        if isinstance(hosts, str):
-            m_targets = hosts
-        elif isinstance(hosts, Iterable):
-            m_targets = ",".join(hosts)
+        targets = hosts
+        if isinstance(hosts, Iterable):
+            targets = ",".join(hosts)
 
         request = """<create_target>
             <name>%s</name>
             <hosts>%s</hosts>
-            <comment>%s</comment>
-        </create_target>""" % (name, m_targets, comment)
+            <comment>%s</comment>""" % (name, targets, comment)
+
+        if port_list:
+            request += '<port_list id="%s"></port_list>' % port_list
+
+        request += "</create_target>"
 
         return self._manager.make_xml_request(request, xml_result=True).get("id")
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def delete_target(self, target_id):
         """
         Delete a target in OpenVAS server.
@@ -185,7 +188,28 @@ class OMPv5(OMP):
 
         self._manager.make_xml_request(request, xml_result=True)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
+    def create_port_list(self, name, tcp_ports=None, udp_ports=None):
+        ports = ','.join([
+            self.make_port_list(tcp_ports),
+            self.make_port_list(udp_ports, 'udp')
+        ])
+
+        request = """<create_port_list>
+                        <name>%s</name>
+                        <comment>A DAVE Test ports list</comment>
+                        <port_range>%s</port_range>
+                     </create_port_list>""" % (name, ports,)
+
+        return self._manager.make_xml_request(request, xml_result=True).get("id")
+
+    # ----------------------------------------------------------------------
+    def make_port_list(self, ports, protocol='tcp'):
+        prefix = 'T:' if protocol is 'tcp' else 'U:'
+        ports = [prefix+pr for pr in port_ranges(ports)]
+        return ','.join(ports)
+
+    # ----------------------------------------------------------------------
     def get_configs(self, config_id=None):
         """
         Get information about the configs in the server.
@@ -205,7 +229,7 @@ class OMPv5(OMP):
         else:
             return self._manager.make_xml_request("<get_configs />", xml_result=True)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def get_configs_ids(self, name=None):
         """
         Get information about the configured profiles (configs)in the server.
@@ -229,7 +253,7 @@ class OMPv5(OMP):
         else:
             return m_return
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def get_tasks(self, task_id=None):
         """
         Get information about the configured profiles in the server.
@@ -250,7 +274,7 @@ class OMPv5(OMP):
         else:
             return self._manager.make_xml_request("<get_tasks />", xml_result=True)
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def is_task_running(self, task_id):
         """
         Return true if task is running
@@ -271,7 +295,7 @@ class OMPv5(OMP):
 
         return status.text in ("Running", "Requested")
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def get_tasks_ids(self, name=None):
         """
         Get IDs of tasks of the server.

@@ -32,7 +32,7 @@ import os
 import logging
 
 from collections import Iterable
-
+from six import iteritems
 try:
     from xml.etree import cElementTree as etree
 except ImportError:
@@ -81,7 +81,7 @@ def report_parser_from_text(text, ignore_log_info=True):
     return report_parser(S.StringIO(text), ignore_log_info)
 
 
-def report_parser(path_or_file, ignore_log_info=True):
+def report_parser(report, ignore_log_info=True):
     """
     This functions transform XML OpenVas file report to OpenVASResult object structure.
 
@@ -110,20 +110,16 @@ def report_parser(path_or_file, ignore_log_info=True):
     :return: list of OpenVASResult structures.
     :rtype: list(OpenVASResult)
     """
-    if isinstance(path_or_file, basestring):
-        if not os.path.exists(path_or_file):
-            raise IOError("File %s not exits." % path_or_file)
-        if not os.path.isfile(path_or_file):
-            raise IOError("%s is not a file." % path_or_file)
+    if type(report).__name__ == "Element":
+        xml_parsed = report
+    elif type(report).__name__ == "ElementTree":
+        xml_parsed = report.getroot()
     else:
-        if not getattr(getattr(path_or_file, "__class__", ""), "__name__", "") in ("file", "StringIO", "StringO"):
-            raise TypeError("Expected basestring or file, got '%s' instead" % type(path_or_file))
-
-    # Parse XML file
-    try:
-        xml_parsed = etree.parse(path_or_file)
-    except etree.ParseError:
-        raise etree.ParseError("Invalid XML file. Ensure file is correct and all tags are properly closed.")
+        # Parse XML file
+        try:
+            xml_parsed = etree.parse(report)
+        except etree.ParseError:
+            raise etree.ParseError("Invalid XML file. Ensure file is correct and all tags are properly closed.")
 
     # Use this method, because API not exposes real path and if you write isisntance(xml_results, Element)
     # doesn't works
@@ -134,234 +130,107 @@ def report_parser(path_or_file, ignore_log_info=True):
     else:
         raise TypeError("Expected ElementTree or Element, got '%s' instead" % type(xml_parsed))
 
-    # Check valid xml format
-    if "id" not in xml.keys():
-        raise ValueError("XML format is not valid, doesn't contains id attribute.")
-
     # Regex
-    port_regex_specific = re.compile("([\w\d\s]*)\(([\d]+)/([\w\W\d]+)\)")
-    port_regex_generic = re.compile("([\w\d\s]*)/([\w\W\d]+)")
-    cvss_regex = re.compile("(cvss_base_vector=[\s]*)([\w:/]+)")
-    vulnerability_IDs = ("cve", "bid", "bugtraq")
-
     m_return = []
-    m_return_append = m_return.append
 
     # All the results
     for l_results in xml.findall(".//result"):
-        l_partial_result = OpenVASResult()
-
-        # Id
-        l_vid = None
-        try:
-            l_vid = l_results.get("id")
-            l_partial_result.id = l_vid
-        except TypeError, e:
-            logging.warning("%s is not a valid vulnerability ID, skipping vulnerability..." % l_vid)
-            logging.debug(e)
-            continue
-
-        # --------------------------------------------------------------------------
-        # Filter invalid vulnerability
-        # --------------------------------------------------------------------------
-        threat = l_results.find("threat")
-        if threat is None:
-            logging.warning("Vulnerability %s can't has 'None' as thread value, skipping vulnerability..." % l_vid)
-            continue
-        else:
-            # Valid threat?
-            if threat.text not in OpenVASResult.risk_levels:
-                logging.warning("%s is not a valid risk level for %s vulnerability. skipping vulnerability..."
-                                % (threat.text,
-                                   l_vid))
-                continue
-
-        # Ignore log/debug messages, only get the results
-        if threat.text in ("Log", "Debug") and ignore_log_info is True:
-            continue
-
-        # For each result
-        for l_val in l_results.getchildren():
-
-            l_tag = l_val.tag
-
-            # --------------------------------------------------------------------------
-            # Common properties: subnet, host, threat, raw_description
-            #--------------------------------------------------------------------------
-            if l_tag in ("subnet", "host", "threat"):
-                # All text vars can be processes both.
-                try:
-                    setattr(l_partial_result, l_tag, l_val.text)
-                except (TypeError, ValueError), e:
-                    logging.warning(
-                        "%s is not a valid value for %s property in %s vulnerability. skipping vulnerability..."
-                        % (l_val.text,
-                           l_tag,
-                           l_partial_result.id))
-                    logging.debug(e)
-                    continue
-
-            elif l_tag == "description":
-                try:
-                    setattr(l_partial_result, "raw_description", l_val.text)
-                except TypeError, e:
-                    logging.warning("%s is not a valid description for %s vulnerability. skipping vulnerability..."
-                                    % (l_val.text,
-                                       l_vid))
-                    logging.debug(e)
-                    continue
-
-            # --------------------------------------------------------------------------
-            # Port
-            # --------------------------------------------------------------------------
-            elif l_tag == "port":
-
-                # Looking for port as format: https (443/tcp)
-                l_port = port_regex_specific.search(l_val.text)
-                if l_port:
-                    l_service = l_port.group(1)
-                    l_number = int(l_port.group(2))
-                    l_proto = l_port.group(3)
-
-                    try:
-                        l_partial_result.port = OpenVASPort(l_service,
-                                                            l_number,
-                                                            l_proto)
-                    except (TypeError, ValueError), e:
-                        logging.warning("%s is not a valid port for %s vulnerability. skipping vulnerability..."
-                                        % (l_val.text,
-                                           l_vid))
-                        logging.debug(e)
-                        continue
-                else:
-                    # Looking for port as format: general/tcp
-                    l_port = port_regex_generic.search(l_val.text)
-                    if l_port:
-                        l_service = l_port.group(1)
-                        l_proto = l_port.group(2)
-
-                        try:
-                            l_partial_result.port = OpenVASPort(l_service, 0, l_proto)
-                        except (TypeError, ValueError), e:
-                            logging.warning("%s is not a valid port for %s vulnerability. skipping vulnerability..."
-                                            % (l_val.text,
-                                               l_vid))
-                            logging.debug(e)
-                            continue
-
-            # --------------------------------------------------------------------------
-            # NVT
-            # --------------------------------------------------------------------------
-            elif l_tag == "nvt":
-
-                # The NVT Object
-                l_nvt_object = OpenVASNVT()
-                try:
-                    l_nvt_object.oid = l_val.attrib['oid']
-                except TypeError, e:
-                    logging.warning("%s is not a valid NVT oid for %s vulnerability. skipping vulnerability..."
-                                    % (l_val.attrib['oid'],
-                                       l_vid))
-                    logging.debug(e)
-                    continue
-
-                # Sub nodes of NVT tag
-                l_nvt_symbols = [x for x in dir(l_nvt_object) if not x.startswith("_")]
-
-                for l_nvt in l_val.getchildren():
-                    l_nvt_tag = l_nvt.tag
-
-                    # For each xml tag...
-                    if l_nvt_tag in l_nvt_symbols:
-
-                        # For tags with content, like: <cert>blah</cert>
-                        if l_nvt.text:
-
-                            # For filter tags like <cve>NOCVE</cve>
-                            if l_nvt.text.startswith("NO"):
-                                try:
-                                    setattr(l_nvt_object, l_nvt_tag, "")
-                                except (TypeError, ValueError), e:
-                                    logging.warning(
-                                        "Empty value is not a valid NVT value for %s property in %s vulnerability. skipping vulnerability..."
-                                        % (l_nvt_tag,
-                                           l_vid))
-                                    logging.debug(e)
-                                    continue
-
-                            # Tags with valid content
-                            else:
-                                # --------------------------------------------------------------------------
-                                # Vulnerability IDs: CVE-..., BID..., BugTraq...
-                                # --------------------------------------------------------------------------
-                                if l_nvt_tag.lower() in vulnerability_IDs:
-                                    l_nvt_text = getattr(l_nvt, "text", "")
-                                    try:
-                                        setattr(l_nvt_object, l_nvt_tag, l_nvt_text.split(","))
-                                    except (TypeError, ValueError), e:
-                                        logging.warning(
-                                            "%s value is not a valid NVT value for %s property in %s vulnerability. skipping vulnerability..."
-                                            % (l_nvt_text,
-                                               l_nvt_tag,
-                                               l_vid))
-                                        logging.debug(e)
-                                    continue
-
-                                else:
-                                    l_nvt_text = getattr(l_nvt, "text", "")
-                                    try:
-                                        setattr(l_nvt_object, l_nvt_tag, l_nvt_text)
-                                    except (TypeError, ValueError), e:
-                                        logging.warning(
-                                            "%s value is not a valid NVT value for %s property in %s vulnerability. skipping vulnerability..."
-                                            % (l_nvt_text,
-                                               l_nvt_tag,
-                                               l_vid))
-                                        logging.debug(e)
-                                    continue
-
-                        # For filter tags without content, like: <cert/>
-                        else:
-                            try:
-                                setattr(l_nvt_object, l_nvt_tag, "")
-                            except (TypeError, ValueError), e:
-                                logging.warning(
-                                    "Empty value is not a valid NVT value for %s property in %s vulnerability. skipping vulnerability..."
-                                    % (l_nvt_tag,
-                                       l_vid))
-                                logging.debug(e)
-                                continue
-
-                # Get CVSS
-                cvss_candidate = l_val.find("tags")
-                if cvss_candidate is not None and getattr(cvss_candidate, "text", None):
-                    # Extract data
-                    cvss_tmp = cvss_regex.search(cvss_candidate.text)
-                    if cvss_tmp:
-                        l_nvt_object.cvss_base_vector = cvss_tmp.group(2) if len(cvss_tmp.groups()) >= 2 else ""
-
-                # Add to the NVT Object
-                try:
-                    l_partial_result.nvt = l_nvt_object
-                except (TypeError, ValueError), e:
-                    logging.warning(
-                        "NVT oid %s is not a valid NVT value for %s vulnerability. skipping vulnerability..."
-                        % (l_nvt_object.oid,
-                           l_vid))
-                    logging.debug(e)
-                    continue
-
-            # --------------------------------------------------------------------------
-            # Unknown tags
-            # --------------------------------------------------------------------------
-            else:
-                # Unrecognised tag
-                logging.warning("%s tag unrecognised" % l_tag)
-
-        # Add to the return values
-        m_return_append(l_partial_result)
+        xml = parse_result(l_results, ignore_log_info)
+        if xml:
+            m_return.append(xml)
 
     return m_return
+
+
+def parse_result(result, ignore_log_info=True):
+    port_regex_specific = re.compile("([\w\d\s]*)\(([\d]+)/([\w\W\d]+)\)")
+    port_regex_generic = re.compile("([\w\d\s]*)/([\w\W\d]+)")
+    vulnerability_ids = ("cve", "bid", "bugtraq")
+
+    # generate an object
+    openvas_result = OpenVASResult()
+
+    # Id
+    vid = result.get("id")
+    openvas_result.id = vid
+
+    # For each child tag in a result
+    for el in result.getchildren():
+        tag_name = el.tag
+
+        # simple tags we want to grab the contents of
+        if tag_name in ("subnet", "host", "threat", "severity", "description"):
+            setattr(openvas_result, tag_name, el.text)
+        elif tag_name == "port" and isinstance(el.text, string_types):
+            # Looking for port as format: https (443/tcp)
+            port = port_regex_specific.search(el.text)
+            if port:
+                service = port.group(1)
+                number = int(port.group(2))
+                proto = port.group(3)
+                openvas_result.port = {'service': service, 'number': number, 'protocol': proto}
+            else:
+                # Looking for port as format: general/tcp
+                port = port_regex_generic.search(el.text)
+                if port:
+                    service = port.group(1)
+                    proto = port.group(2)
+                    openvas_result.port = {'service': service, 'number': 0, 'protocol': proto}
+
+        # grab all the nvt tags
+        elif tag_name == "nvt":
+
+            # The NVT Object
+            nvt_object = OpenVASNVT()
+            nvt_object.oid = el.attrib['oid']
+
+            # Sub nodes of NVT tag
+            l_nvt_symbols = [x for x in dir(nvt_object) if not x.startswith("_")]
+
+            for el_nvt in el.getchildren():
+                nvt_tag_name = el_nvt.tag
+
+                # For each xml tag...
+                if nvt_tag_name in l_nvt_symbols:
+
+                    # For elements with content, like: <cert>blah</cert>
+                    if el_nvt.text:
+                        if nvt_tag_name.lower() == 'tags':
+                            kvpairs = el_nvt.text.split('|')
+                            for line in kvpairs:
+                                try:
+                                    k, v = line.split('=', 2)
+                                    if hasattr(nvt_object, k):
+                                        setattr(nvt_object, k, v.strip())
+                                except ValueError, e:
+                                    pass
+                        # for filter tags like <cve>NOCVE</cve>
+                        elif el_nvt.text.startswith("NO"):
+                            setattr(nvt_object, nvt_tag_name, el_nvt.text)
+                        # elements with valid content
+                        else:
+                            if nvt_tag_name.lower() in vulnerability_ids:
+                                l_nvt_text = getattr(el_nvt, "text", "")
+                                setattr(nvt_object, nvt_tag_name, l_nvt_text.split(","))
+                                continue
+                            else:
+                                l_nvt_text = getattr(el_nvt, "text", "")
+                                setattr(nvt_object, nvt_tag_name, l_nvt_text)
+                                continue
+
+                    # For filter tags without content, like: <cert/>
+                    else:
+                        setattr(nvt_object, nvt_tag_name, "")
+
+            # Add to the NVT Object
+            openvas_result.nvt = nvt_object
+
+        else:
+            # Unrecognised tag
+            logging.warning("%s tag unrecognised" % tag_name)
+
+    # Add to the return values
+    return openvas_result
 
 
 #------------------------------------------------------------------------------
@@ -506,7 +375,48 @@ class VulnscanManager(object):
         self.__target_id = None
 
     #----------------------------------------------------------------------
-    def launch_scan(self, target, **kwargs):
+    def create_scan(self, targets, profile='Full and fast', tcp_ports=None, udp_ports=None, **kwargs):
+        if not (isinstance(targets, basestring) or isinstance(targets, Iterable)):
+            raise TypeError("Expected basestring or iterable, got %r instead" % type(targets))
+
+        target_name = "openvas_lib_target_%s_%s" % (targets, generate_random_string(20))
+        port_list_name = "openvas_lib_portlist_%s_%s" % (targets, generate_random_string(20))
+        job_name = "openvas_lib_scan_%s_%s" % (targets, generate_random_string(20))
+
+        # Get the profile ID by their name
+        try:
+            tmp = self.__manager.get_configs_ids(profile)
+            profile_id = tmp[profile]
+        except ServerError, e:
+            raise VulnscanProfileError("The profile select not exits int the server. Error: %s" % e.message)
+        except KeyError:
+            raise VulnscanProfileError("The profile select not exits int the server")
+
+        # Port list
+        try:
+            port_list_id = self.__manager.create_port_list(port_list_name, tcp_ports=tcp_ports, udp_ports=udp_ports)
+        except ServerError, e:
+            raise VulnscanProfileError("The portlist you suggested was not accepted by the server or already exists. " +
+                                       "Error: %s" % e.message)
+
+        # Create the target
+        try:
+            target_id = self.__manager.create_target(target_name, targets, "Temporal target from OpenVAS Lib",
+                                                     port_list=port_list_id)
+        except ServerError, e:
+            raise VulnscanTargetError("The target already exits on the server. Error: %s" % e.message)
+
+
+        # Create task
+        try:
+            task_id = self.__manager.create_task(job_name, target_id, config=profile_id, comment="Scan by OpenVAS lib")
+        except ServerError, e:
+            raise VulnscanScanError("The target selected doesnn't exist in the server. Error: %s" % e.message)
+
+        return task_id, target_id
+
+    #----------------------------------------------------------------------
+    def launch_scan(self, task_id=None, **kwargs):
         """
         Launch a new audit in OpenVAS.
 
@@ -566,55 +476,22 @@ class VulnscanManager(object):
         :rtype: (str, str)
         """
 
-        profile = kwargs.get("profile", "Full and fast")
         call_back_end = kwargs.get("callback_end", None)
         call_back_progress = kwargs.get("callback_progress", None)
-        if not (isinstance(target, basestring) or isinstance(target, Iterable)):
-            raise TypeError("Expected basestring or iterable, got %r instead" % type(target))
-        if not isinstance(profile, basestring):
-            raise TypeError("Expected string, got %r instead" % type(profile))
-
-        # Generate the random names used
-        m_target_name = "openvas_lib_target_%s_%s" % (target, generate_random_string(20))
-        m_job_name = "openvas_lib_scan_%s_%s" % (target, generate_random_string(20))
-
-        # Create the target
-        try:
-            m_target_id = self.__manager.create_target(m_target_name, target,
-                                                       "Temporal target from OpenVAS Lib")
-        except ServerError, e:
-            raise VulnscanTargetError("The target already exits on the server. Error: %s" % e.message)
-
-        # Get the profile ID by their name
-        try:
-            tmp = self.__manager.get_configs_ids(profile)
-            m_profile_id = tmp[profile]
-        except ServerError, e:
-            raise VulnscanProfileError("The profile select not exits int the server. Error: %s" % e.message)
-        except KeyError:
-            raise VulnscanProfileError("The profile select not exits int the server")
-
-        # Create task
-        try:
-            m_task_id = self.__manager.create_task(m_job_name, m_target_id, config=m_profile_id,
-                                                   comment="scan from OpenVAS lib")
-        except ServerError, e:
-            raise VulnscanScanError("The target selected doesnn't exist in the server. Error: %s" % e.message)
 
         # Start the scan
         try:
-            self.__manager.start_task(m_task_id)
+            self.__manager.start_task(task_id)
         except ServerError, e:
-            raise VulnscanScanError("Unknown error while try to start the task '%s'. Error: %s" % (m_task_id, e.message))
+            raise VulnscanScanError("Unknown error while try to start the task '%s'. Error: %s" % (task_id, e.message))
 
         # Callback is set?
         if call_back_end or call_back_progress:
             # schedule a function to run each 10 seconds to check the estate in the server
-            self.__task_id = m_task_id
-            self.__target_id = m_target_id
+            self.__task_id = task_id
             self.__function_handle = self._callback(call_back_end, call_back_progress)
 
-        return m_task_id, m_target_id
+        return task_id
 
     #----------------------------------------------------------------------
     @property
@@ -812,7 +689,7 @@ class VulnscanManager(object):
                 # Reset error counter
                 self.__error_counter = 0
 
-        except (ClientError, ServerError,Exception), e:
+        except (ClientError, ServerError, Exception), e:
             self.__error_counter += 1
 
             # Checks for error number
@@ -831,6 +708,6 @@ class VulnscanManager(object):
 
                 func_status(1.0 if t == 0.0 else t)
 
-            except (ClientError, ServerError,Exception), e:
+            except (ClientError, ServerError, Exception), e:
 
                 func_status(self.__old_progress)

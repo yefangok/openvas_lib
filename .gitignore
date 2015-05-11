@@ -4,3 +4,4 @@ MANIFEST
 build/
 dist/
 .idea/
+openvas_lib.egg-info/

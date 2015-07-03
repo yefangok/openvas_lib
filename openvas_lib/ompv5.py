@@ -139,7 +139,7 @@ class OMPv5(OMP):
         return self._manager.make_xml_request(request, xml_result=True).get("id")
 
     # ----------------------------------------------------------------------
-    def create_target(self, name, hosts, comment="", port_list=None):
+    def create_target(self, name, hosts, comment="", port_list=None, ssh_creds=None, ssh_port=22, smb_creds=None):
         """
         Creates a target in OpenVAS.
 
@@ -151,6 +151,12 @@ class OMPv5(OMP):
 
         :param comment: comment to add to task
         :type comment: str
+
+        :param port_list: id of a portlist to assign to this target
+        :type port_list: str
+
+        :param ssh_creds: id of lsc_credentials to assign to this target
+        :type port_list: str
 
         :return: the ID of the created target.
         :rtype: str
@@ -168,6 +174,13 @@ class OMPv5(OMP):
 
         if port_list:
             request += '<port_list id="%s"></port_list>' % port_list
+
+        if ssh_creds:
+            request += '<ssh_lsc_credential id="%s"><port>%s</port></ssh_lsc_credential>' \
+                       % (ssh_creds, ssh_port)
+
+        if smb_creds:
+            request += '<smb_lsc_credential id="%s"></smb_lsc_credential>' % smb_creds
 
         request += "</create_target>"
 
@@ -208,6 +221,38 @@ class OMPv5(OMP):
         prefix = 'T:' if protocol is 'tcp' else 'U:'
         ports = [prefix+pr for pr in port_ranges(ports)]
         return ','.join(ports)
+
+    # ----------------------------------------------------------------------
+    def create_credentials_with_password(self, name, username, password):
+        request = """
+            <create_lsc_credential>
+                <name>{name}</name>
+                <login>{username}</login>
+                <password>{password}</password>
+                <comment>Credentials passed from DAVE</comment>
+            </create_lsc_credential>
+            """.format(name=name, username=username, password=password)
+
+        return self._manager.make_xml_request(request, xml_result=True).get("id")
+
+
+    # ----------------------------------------------------------------------
+    def create_credentials_with_key(self, name, username, key_phrase, key_private, key_public):
+        request = """
+            <create_lsc_credential>
+                <name>{name}</name>
+                <login>{username}</login>
+                <key>
+                    <phrase>{key_phrase}</phrase>
+                    <private>{key_private}</private>
+                    <public>{key_public}</public>
+                </key>
+                <comment>Credentials passed from DAVE</comment>
+            </create_lsc_credential>
+            """.format(name=name, username=username, key_phrase=key_phrase, key_private=key_private, key_public=key_public)
+
+        return self._manager.make_xml_request(request, xml_result=True).get("id")
+
 
     # ----------------------------------------------------------------------
     def get_configs(self, config_id=None):

@@ -375,7 +375,8 @@ class VulnscanManager(object):
         self.__target_id = None
 
     #----------------------------------------------------------------------
-    def create_scan(self, targets, profile='Full and fast', tcp_ports=None, udp_ports=None, **kwargs):
+    def create_scan(self, targets, profile='Full and fast', tcp_ports=None, udp_ports=None,
+                    credentials=None, **kwargs):
         if not (isinstance(targets, basestring) or isinstance(targets, Iterable)):
             raise TypeError("Expected basestring or iterable, got %r instead" % type(targets))
 
@@ -388,9 +389,9 @@ class VulnscanManager(object):
             tmp = self.__manager.get_configs_ids(profile)
             profile_id = tmp[profile]
         except ServerError, e:
-            raise VulnscanProfileError("The profile select not exits int the server. Error: %s" % e.message)
+            raise VulnscanProfileError("The profile does not exits on the server. Error: %s" % e.message)
         except KeyError:
-            raise VulnscanProfileError("The profile select not exits int the server")
+            raise VulnscanProfileError("The profile does not exits on the server.")
 
         # Port list
         try:
@@ -398,6 +399,8 @@ class VulnscanManager(object):
         except ServerError, e:
             raise VulnscanProfileError("The portlist you suggested was not accepted by the server or already exists. " +
                                        "Error: %s" % e.message)
+
+
 
         # Create the target
         try:

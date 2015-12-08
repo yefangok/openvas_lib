@@ -163,9 +163,11 @@ class OMPv5(OMP):
 
         :raises: ClientError, ServerError
         """
+        print u'HELLO: ' + unicode(hosts)
         targets = hosts
         if isinstance(hosts, Iterable):
-            targets = ",".join(hosts)
+            targets = [h for h in hosts if h]
+            targets = ",".join(targets)
 
         request = """<create_target>
             <name>%s</name>
@@ -214,12 +216,14 @@ class OMPv5(OMP):
                         <port_range>%s</port_range>
                      </create_port_list>""" % (name, ports,)
 
+        print request
+
         return self._manager.make_xml_request(request, xml_result=True).get("id")
 
     # ----------------------------------------------------------------------
     def make_port_list(self, ports, protocol='tcp'):
         prefix = 'T:' if protocol is 'tcp' else 'U:'
-        ports = [prefix+pr for pr in port_ranges(ports)]
+        ports = [prefix + pr for pr in port_ranges(ports)]
         return ','.join(ports)
 
     # ----------------------------------------------------------------------

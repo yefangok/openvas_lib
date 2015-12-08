@@ -102,15 +102,20 @@ def port_ranges(ports, sep='-'):
         port_ranges(['0', '12-22', ])
 
     """
+    if isinstance(ports, basestring):
+        ports = ports.split(',') if ',' in ports else [ports]
+
     out = []
-    for (i, p) in enumerate(ports):
+    for i, p in enumerate(ports):
+        print(p)
         if isinstance(p, basestring) and sep in p:
             start, end = p.split(sep, 2)
-            out.append(range(int(start), int(end)))
+            out += range(int(start), int(end))
         else:
             out.append(int(p))
 
     # de-duplicate
+    print(set(out))
     out = list(set(out))
     pranges = ranges(out)
 

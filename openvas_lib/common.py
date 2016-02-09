@@ -85,6 +85,10 @@ def get_connector(host, username, password, port=9390, timeout=None):
     elif manager.protocol_version == "5.0":
         from openvas_lib.ompv5 import OMPv5
         return OMPv5(manager)
+    elif manager.protocol_version == "6.0":
+        from openvas_lib.ompv5 import OMPv5
+        return OMPv5(manager)
+
     else:
         raise RemoteVersionError("Unknown OpenVAS version for remote host.")
 
@@ -275,8 +279,11 @@ class ConnectionManager(object):
             return "dummy"
 
         response = self.make_xml_request('<get_version/>', xml_result=True)
+        print(etree.tostring(response))
 
         v = response.find("version").text
+        print(v)
+        print('no idea')
 
         if not v:
             raise RemoteVersionError("Unknown remote server version")

@@ -624,10 +624,10 @@ class VulnscanManager(object):
         :param task_id: Scan ID.
         :type task_id: str
 
-        :raises: VulnscanAuditNotFoundError
+        :raises: AuditNotFoundError
         """
         try:
-            self.__manager.stop_task(self.task_id)
+            self.__manager.stop_task(task_id)
         except AuditNotRunningError, e:
             raise VulnscanAuditNotFoundError(e)
 

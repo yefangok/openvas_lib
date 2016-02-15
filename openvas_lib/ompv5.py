@@ -165,7 +165,6 @@ class OMPv5(OMP):
 
         :raises: ClientError, ServerError
         """
-        print u'HELLO: ' + unicode(hosts)
         targets = hosts
         if isinstance(hosts, Iterable):
             targets = [h for h in hosts if h]

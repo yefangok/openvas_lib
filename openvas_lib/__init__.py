@@ -380,9 +380,9 @@ class VulnscanManager(object):
         if not (isinstance(targets, basestring) or isinstance(targets, Iterable)):
             raise TypeError("Expected basestring or iterable, got %r instead" % type(targets))
 
-        target_name = "openvas_lib_target_%s_%s" % (targets, generate_random_string(20))
-        port_list_name = "openvas_lib_portlist_%s_%s" % (targets, generate_random_string(20))
-        job_name = "openvas_lib_scan_%s_%s" % (targets, generate_random_string(20))
+        target_name = "openvas_lib_target_%s" % generate_random_string(20)
+        port_list_name = "openvas_lib_portlist_%s" % (generate_random_string(20),)
+        job_name = "openvas_lib_scan_%s" % (generate_random_string(20),)
 
         # Get the profile ID by their name
         try:
@@ -400,15 +400,12 @@ class VulnscanManager(object):
             raise VulnscanProfileError("The portlist you suggested was not accepted by the server or already exists. " +
                                        "Error: %s" % e.message)
 
-
-
         # Create the target
         try:
             target_id = self.__manager.create_target(target_name, targets, "Temporal target from OpenVAS Lib",
                                                      port_list=port_list_id)
         except ServerError, e:
             raise VulnscanTargetError("The target already exits on the server. Error: %s" % e.message)
-
 
         # Create task
         try:

@@ -117,7 +117,6 @@ def port_ranges(ports, sep='-'):
             out.append(int(p))
 
     # de-duplicate
-    print(set(out))
     out = list(set(out))
     pranges = ranges(out)
 

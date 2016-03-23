@@ -113,6 +113,9 @@ class OpenVASNVT(_Common):
         self.risk_factor = "None"
         self.category = "Unknown"
         self.summary = ""
+        self.solution = ""
+        self.insight = ""
+        self.qod_type = ""
         self.description = ""
         self.family = "Unknown"
 
